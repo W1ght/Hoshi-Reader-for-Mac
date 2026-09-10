@@ -50,6 +50,7 @@ struct VideoPlayerScreen: View {
     @State private var selectedStudySidebarTab: VideoStudySidebarTab = .history
     @State private var isPlaybackChromeVisible = true
     @State private var isSpeedPanelVisible = false
+    @State private var isSavingScreenshot = false
     @State private var isPointerInsidePlayerSurface = true
     @State private var lastPlaybackChromePointerLocation: CGPoint?
     @State private var areSubtitlesVisible = true
@@ -866,6 +867,8 @@ struct VideoPlayerScreen: View {
                         snapshot: model.snapshot,
                         timelinePreview: timelinePreview,
                         playlist: model.playlist,
+                        canSaveScreenshot: model.snapshot.isLoaded && !model.snapshot.isSeeking
+                            && model.snapshot.videoDisplaySize != nil && !isSavingScreenshot,
                         canMineCurrentSubtitle: canMineCurrentSubtitle,
                         isFullScreen: windowChrome.isFullScreen,
                         isSubtitleGapFastForwardEnabled: userConfig.videoSubtitleGapFastForwardEnabled,
@@ -913,6 +916,7 @@ struct VideoPlayerScreen: View {
                                 presentFileImporter(.video)
                             }
                         },
+                        onSaveScreenshot: saveCleanScreenshot,
                         onMineCurrentSubtitle: {
                             mineCurrentSubtitle()
                             revealPlaybackChrome(scheduleHide: true)
@@ -2394,6 +2398,49 @@ struct VideoPlayerScreen: View {
 
     private func adjustVolume(by delta: Double) {
         setVolumeWithOSD(model.snapshot.volume + delta)
+    }
+
+    private func saveCleanScreenshot() {
+        guard model.snapshot.isLoaded, !model.snapshot.isSeeking,
+              !isSavingScreenshot, let sourceURL = model.currentURL else { return }
+        isSavingScreenshot = true
+        revealPlaybackChrome(scheduleHide: false)
+        let window = NSApp.keyWindow
+        let seconds = model.snapshot.currentTime
+        let filename = sourceURL.deletingPathExtension().lastPathComponent
+            .replacingOccurrences(of: ":", with: "-")
+        Task { @MainActor in
+            defer {
+                isSavingScreenshot = false
+                revealPlaybackChrome(scheduleHide: true)
+            }
+            let temporaryURL = FileManager.default.temporaryDirectory
+                .appendingPathComponent("niratan-screenshot-\(UUID().uuidString).png")
+            defer { try? FileManager.default.removeItem(at: temporaryURL) }
+            do {
+                // Capture before presenting the panel so playback cannot change the chosen frame.
+                // PlaybackEngine uses mpv's video-only capture, excluding subtitles and window chrome.
+                try await model.engine.captureScreenshot(to: temporaryURL)
+                let data = try Data(contentsOf: temporaryURL)
+                let panel = NSSavePanel()
+                panel.allowedContentTypes = [.png]
+                panel.nameFieldStringValue = "\(filename)-\(String(format: "%.3f", seconds)).png"
+                let response = await withCheckedContinuation { continuation in
+                    if let window {
+                        panel.beginSheetModal(for: window) { continuation.resume(returning: $0) }
+                    } else {
+                        panel.begin { continuation.resume(returning: $0) }
+                    }
+                }
+                guard response == .OK, let destination = panel.url else { return }
+                let scoped = destination.startAccessingSecurityScopedResource()
+                defer { if scoped { destination.stopAccessingSecurityScopedResource() } }
+                try data.write(to: destination, options: .atomic)
+                showVideoOSD(VideoOnScreenDisplayItem(title: "Screenshot Saved", value: ""))
+            } catch {
+                model.errorMessage = String(localized: "Unable to save the video screenshot.")
+            }
+        }
     }
 
     private func setSpeedWithOSD(_ speed: Double) {

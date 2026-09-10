@@ -1,6 +1,72 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Save Clean Screenshot": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save Clean Screenshot"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存纯净截屏"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "儲存純淨截圖"
+          }
+        }
+      }
+    },
+    "Screenshot Saved": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Screenshot Saved"
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截屏已保存"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "截圖已儲存"
+          }
+        }
+      }
+    },
+    "Unable to save the video screenshot.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unable to save the video screenshot."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "无法保存视频截屏。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法儲存影片截圖。"
+          }
+        }
+      }
+    },
     "Base URL": {
       "localizations": {
         "en": { "stringUnit": { "state": "translated", "value": "Base URL" } },

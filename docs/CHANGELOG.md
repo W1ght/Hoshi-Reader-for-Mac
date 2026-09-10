@@ -2,6 +2,18 @@
 
 This changelog records user-visible changes only. Implementation details, investigation logs, and temporary experiments belong in commits, issues, or focused design docs.
 
+## 1.6.5
+
+### 中文
+
+- 视频底部控制栏新增“保存纯净截屏”相机按钮，可截取当前视频画面并保存为 PNG，不包含播放器黑边、控件及外挂字幕。悬浮栏、贴底栏和窄窗口均可使用。
+- 默认截图文件名包含视频名称和播放时间。视频画面本身压入的字幕或黑边仍会保留。
+
+### English
+
+- Added a Save Clean Screenshot camera button to the video controls. Capture the current video frame as PNG without player letterboxing, controls, or external subtitles, including in floating, compact-bottom, and narrow layouts.
+- Screenshot filenames include the video name and playback time. Subtitles or borders burned into the source video remain in the image.
+
 ## 1.6.4
 
 ### 中文

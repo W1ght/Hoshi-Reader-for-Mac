@@ -12,6 +12,7 @@ struct VideoControlsView: View {
     let snapshot: VideoPlaybackSnapshot
     let timelinePreview: VideoTimelinePreview?
     let playlist: VideoPlaylist
+    let canSaveScreenshot: Bool
     let canMineCurrentSubtitle: Bool
     let isFullScreen: Bool
     let isSubtitleGapFastForwardEnabled: Bool
@@ -27,6 +28,7 @@ struct VideoControlsView: View {
     var onSetSpeed: (Double) -> Void
     var onToggleMiningHistory: () -> Void
     var onOpenVideo: () -> Void
+    var onSaveScreenshot: () -> Void
     var onMineCurrentSubtitle: () -> Void
     var onToggleSubtitleGapFastForward: () -> Void
     var onToggleInspector: () -> Void
@@ -354,6 +356,7 @@ struct VideoControlsView: View {
             speedControlButton
             openVideoButton
             inspectorButton
+            screenshotButton
             fullScreenButton
         }
     }
@@ -363,6 +366,7 @@ struct VideoControlsView: View {
             Spacer(minLength: 0)
             episodeControls
             Spacer(minLength: 4)
+            screenshotButton
             fullScreenButton
         }
     }
@@ -374,6 +378,7 @@ struct VideoControlsView: View {
             openVideoButton
             mineCurrentSubtitleButton
             inspectorButton
+            screenshotButton
             fullScreenButton
         }
     }
@@ -424,6 +429,18 @@ struct VideoControlsView: View {
         .buttonStyle(VideoGlassIconButtonStyle(treatment: controlTreatment))
         .disabled(!canMineCurrentSubtitle)
         .help("Mine Current Subtitle")
+    }
+
+    private var screenshotButton: some View {
+        Button(action: onSaveScreenshot) {
+            Label("Save Clean Screenshot", systemImage: "camera")
+                .labelStyle(.iconOnly)
+                .frame(width: iconButtonSize, height: iconButtonSize)
+        }
+        .buttonStyle(VideoGlassIconButtonStyle(treatment: controlTreatment))
+        .disabled(!canSaveScreenshot)
+        .help("Save Clean Screenshot")
+        .accessibilityLabel(Text("Save Clean Screenshot"))
     }
 
     private var inspectorButton: some View {
