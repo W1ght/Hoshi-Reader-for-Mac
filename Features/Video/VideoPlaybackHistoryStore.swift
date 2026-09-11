@@ -37,6 +37,7 @@ nonisolated enum VideoSubtitleSelection: Codable, Equatable, Hashable, Sendable 
     case off
     case embedded(VideoSubtitleTrackIdentity)
     case external(path: String)
+    case externalDisabled(path: String)
     case remoteOption(RemoteVideoSubtitleSelectionIdentity)
     case remote(language: String)
 
@@ -169,6 +170,7 @@ nonisolated struct VideoPlaybackResumeOptions: Codable, Equatable, Sendable {
 nonisolated enum VideoSubtitleRestoreResolution: Equatable, Sendable {
     case off
     case external(URL)
+    case externalDisabled(URL)
     case embeddedTrack(Int)
     case remoteOption(RemoteVideoSubtitleSelectionIdentity)
     case remoteLanguage(String)
@@ -190,6 +192,11 @@ nonisolated enum VideoSubtitleRestoreResolver {
             let url = URL(fileURLWithPath: path).standardizedFileURL
             return fileManager.fileExists(atPath: url.path)
                 ? .external(url)
+                : .unavailable
+        case .externalDisabled(let path):
+            let url = URL(fileURLWithPath: path).standardizedFileURL
+            return fileManager.fileExists(atPath: url.path)
+                ? .externalDisabled(url)
                 : .unavailable
         case .remote(let language):
             return .remoteLanguage(language)
@@ -568,6 +575,33 @@ nonisolated final class VideoPlaybackHistoryStore: @unchecked Sendable {
         storage.snapshot().subtitleSelections[identity.persistenceKey]
     }
 
+    func externalSubtitlePath(for identity: VideoMediaIdentity) -> String? {
+        let snapshot = storage.snapshot()
+        if let path = snapshot.externalSubtitlePaths[identity.persistenceKey] {
+            return path
+        }
+        switch snapshot.subtitleSelections[identity.persistenceKey] {
+        case .external(let path), .externalDisabled(let path):
+            return path
+        default:
+            return nil
+        }
+    }
+
+    func allExternalSubtitlePaths() -> [String] {
+        let snapshot = storage.snapshot()
+        var paths = Set(snapshot.externalSubtitlePaths.values)
+        paths.formUnion(snapshot.subtitleSelections.values.compactMap { selection in
+            switch selection {
+            case .external(let path), .externalDisabled(let path):
+                return path
+            default:
+                return nil
+            }
+        })
+        return Array(paths)
+    }
+
     func save(subtitleSelection: VideoSubtitleSelection, for url: URL) {
         save(
             subtitleSelection: subtitleSelection,
@@ -581,8 +615,38 @@ nonisolated final class VideoPlaybackHistoryStore: @unchecked Sendable {
     ) {
         let key = identity.persistenceKey
         let changed = storage.mutate(deferred: false) { snapshot in
-            guard snapshot.subtitleSelections[key] != subtitleSelection else { return false }
-            snapshot.subtitleSelections[key] = subtitleSelection
+            var changed = false
+            if snapshot.subtitleSelections[key] != subtitleSelection {
+                snapshot.subtitleSelections[key] = subtitleSelection
+                changed = true
+            }
+            switch subtitleSelection {
+            case .external(let path), .externalDisabled(let path):
+                if snapshot.externalSubtitlePaths[key] != path {
+                    snapshot.externalSubtitlePaths[key] = path
+                    changed = true
+                }
+            default:
+                break
+            }
+            return changed
+        }
+        if changed {
+            postChange(for: key)
+        }
+    }
+
+    func saveExternalSubtitlePath(
+        _ path: String,
+        for identity: VideoMediaIdentity
+    ) {
+        let key = identity.persistenceKey
+        let normalizedPath = URL(fileURLWithPath: path).standardizedFileURL.path
+        let changed = storage.mutate(deferred: false) { snapshot in
+            guard snapshot.externalSubtitlePaths[key] != normalizedPath else {
+                return false
+            }
+            snapshot.externalSubtitlePaths[key] = normalizedPath
             return true
         }
         if changed {
@@ -620,9 +684,52 @@ nonisolated final class VideoPlaybackHistoryStore: @unchecked Sendable {
         var positions: [String: TimeInterval] = [:]
         var playbackStates: [String: VideoPlaybackState] = [:]
         var subtitleSelections: [String: VideoSubtitleSelection] = [:]
+        var externalSubtitlePaths: [String: String] = [:]
 
         var isEmpty: Bool {
-            positions.isEmpty && playbackStates.isEmpty && subtitleSelections.isEmpty
+            positions.isEmpty
+                && playbackStates.isEmpty
+                && subtitleSelections.isEmpty
+                && externalSubtitlePaths.isEmpty
+        }
+
+        private enum CodingKeys: String, CodingKey {
+            case positions
+            case playbackStates
+            case subtitleSelections
+            case externalSubtitlePaths
+        }
+
+        init(
+            positions: [String: TimeInterval] = [:],
+            playbackStates: [String: VideoPlaybackState] = [:],
+            subtitleSelections: [String: VideoSubtitleSelection] = [:],
+            externalSubtitlePaths: [String: String] = [:]
+        ) {
+            self.positions = positions
+            self.playbackStates = playbackStates
+            self.subtitleSelections = subtitleSelections
+            self.externalSubtitlePaths = externalSubtitlePaths
+        }
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: CodingKeys.self)
+            positions = try container.decodeIfPresent(
+                [String: TimeInterval].self,
+                forKey: .positions
+            ) ?? [:]
+            playbackStates = try container.decodeIfPresent(
+                [String: VideoPlaybackState].self,
+                forKey: .playbackStates
+            ) ?? [:]
+            subtitleSelections = try container.decodeIfPresent(
+                [String: VideoSubtitleSelection].self,
+                forKey: .subtitleSelections
+            ) ?? [:]
+            externalSubtitlePaths = try container.decodeIfPresent(
+                [String: String].self,
+                forKey: .externalSubtitlePaths
+            ) ?? [:]
         }
     }
 
@@ -728,7 +835,15 @@ nonisolated final class VideoPlaybackHistoryStore: @unchecked Sendable {
             return Snapshot(
                 positions: positions,
                 playbackStates: playbackStates,
-                subtitleSelections: subtitleSelections
+                subtitleSelections: subtitleSelections,
+                externalSubtitlePaths: subtitleSelections.reduce(into: [:]) { result, entry in
+                    switch entry.value {
+                    case .external(let path), .externalDisabled(let path):
+                        result[entry.key] = path
+                    default:
+                        break
+                    }
+                }
             )
         }
 

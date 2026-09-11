@@ -405,6 +405,14 @@ final class VideoPlayerViewModel {
     }
 
     func loadExternalSubtitle(_ url: URL) {
+        if let existing = snapshot.tracks.first(where: {
+            $0.type == .subtitle && $0.externalFilename.map {
+                URL(fileURLWithPath: $0).standardizedFileURL == url.standardizedFileURL
+            } == true
+        }) {
+            engine.selectTrack(type: .subtitle, id: existing.id)
+            return
+        }
         engine.loadExternalSubtitle(url: url)
     }
 
@@ -416,6 +424,26 @@ final class VideoPlayerViewModel {
     func rememberSubtitleSelection(_ selection: VideoSubtitleSelection) {
         guard rememberPlaybackPosition, let currentMediaIdentity else { return }
         historyStore.save(subtitleSelection: selection, for: currentMediaIdentity)
+    }
+
+    func rememberExternalSubtitlePath(_ url: URL) {
+        guard rememberPlaybackPosition, let currentMediaIdentity else { return }
+        historyStore.saveExternalSubtitlePath(
+            url.standardizedFileURL.path,
+            for: currentMediaIdentity
+        )
+    }
+
+    var rememberedExternalSubtitleURL: URL? {
+        guard rememberPlaybackPosition, let currentMediaIdentity else { return nil }
+        let path = historyStore.externalSubtitlePath(for: currentMediaIdentity)
+        return path.map { URL(fileURLWithPath: $0).standardizedFileURL }
+    }
+
+    func rememberedExternalSubtitlePaths() -> Set<String> {
+        Set(historyStore.allExternalSubtitlePaths().map { path in
+            URL(fileURLWithPath: path).standardizedFileURL.path
+        })
     }
 
     func consumePendingSubtitleSelection() -> VideoSubtitleSelection? {

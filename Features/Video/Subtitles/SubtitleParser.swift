@@ -204,6 +204,9 @@ nonisolated enum SubtitleParser {
             ? defaultSSAStyleFields
             : defaultASSStyleFields
         var styleAlignments: [String: Int] = [:]
+        var styleDefinitions: [String: [String: String]] = [:]
+        var scriptWidth: Double = 384
+        var scriptHeight: Double = 288
         var parsedEvents: [ParsedASSEvent] = []
         var dialogueLineIndices: Set<Int> = []
         let sourceLines = text.components(separatedBy: "\n")
@@ -233,8 +236,26 @@ nonisolated enum SubtitleParser {
                        usesLegacyAlignment: section == "[v4 styles]"
                    ) {
                     styleAlignments[style.name.lowercased()] = style.alignment
+                    let values = styleValue.components(separatedBy: ",")
+                        .map { $0.trimmingCharacters(in: .whitespaces) }
+                    if values.count == styleFields.count {
+                        styleDefinitions[style.name.lowercased()] = Dictionary(
+                            zip(styleFields, values), uniquingKeysWith: { _, last in last }
+                        )
+                    }
                 }
                 continue
+            }
+
+            if section == "[script info]" {
+                if let raw = value(after: "PlayResX:", in: line),
+                   let width = Double(raw), width.isFinite, width > 0 {
+                    scriptWidth = width
+                }
+                if let raw = value(after: "PlayResY:", in: line),
+                   let height = Double(raw), height.isFinite, height > 0 {
+                    scriptHeight = height
+                }
             }
 
             guard section == "[events]" else { continue }
@@ -351,6 +372,14 @@ nonisolated enum SubtitleParser {
         } else {
             effectsOnlyData = nil
         }
+        let drawingLines = Set(parsedEvents.filter {
+            $0.kind == .dialogue && $0.cue == nil && $0.markers.contains(.drawing)
+        }.map(\.lineIndex))
+        let interactiveEffectsOnlyData: Data? = drawingLines.isEmpty ? nil : Data(
+            sourceLines.enumerated().filter {
+                !dialogueLineIndices.contains($0.offset) || drawingLines.contains($0.offset)
+            }.map(\.element).joined(separator: "\n").utf8
+        )
 
         return SubtitleDocument(
             sourceURL: sourceURL,
@@ -360,7 +389,11 @@ nonisolated enum SubtitleParser {
             assRenderPlan: ASSRenderPlan(
                 primaryCueIDs: primaryCueIDs,
                 events: eventMetadata,
-                effectsOnlyData: effectsOnlyData
+                effectsOnlyData: effectsOnlyData,
+                styleDefinitions: styleDefinitions,
+                scriptWidth: scriptWidth,
+                scriptHeight: scriptHeight,
+                interactiveEffectsOnlyData: interactiveEffectsOnlyData
             )
         )
     }

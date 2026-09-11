@@ -54,6 +54,7 @@ struct VideoInspectorView: View {
     let currentURL: URL?
     let currentTitle: String?
     let primarySubtitleName: String?
+    let isPrimarySubtitleActive: Bool
     let remoteSubtitleOptions: [RemoteVideoSubtitleOption]
     let selectedRemoteSubtitleID: String?
     let selectedJimakuSubtitleID: String?
@@ -78,6 +79,7 @@ struct VideoInspectorView: View {
     var onSelectRemoteSubtitle: (RemoteVideoSubtitleOption) -> Void
     var onSelectJimakuSubtitle: (JimakuSubtitleFile) -> Void
     var onSelectAJATTSubtitle: (AJATTSubtitleFile) -> Void
+    var onSelectExternalSubtitle: () -> Void
     var onSelectRemoteQuality: (RemoteVideoQualityOption) -> Void
     var onOpenSubtitle: () -> Void
     var onClearPrimarySubtitle: () -> Void
@@ -416,8 +418,12 @@ struct VideoInspectorView: View {
                     selectionRow(
                         title: primarySubtitleName,
                         subtitle: primarySubtitleSourceName,
-                        isSelected: true,
-                        action: onClearPrimarySubtitle
+                        isSelected: isPrimarySubtitleActive,
+                        action: {
+                            if !isPrimarySubtitleActive {
+                                onSelectExternalSubtitle()
+                            }
+                        }
                     )
                 }
 
@@ -469,6 +475,10 @@ struct VideoInspectorView: View {
     private var subtitleAppearanceSection: some View {
         inspectorSection("Subtitle Appearance", systemName: "textformat.size") {
             VStack(alignment: .leading, spacing: 10) {
+                Toggle("Respect ASS subtitle styles", isOn: Binding(
+                    get: { userConfig.videoRespectASSStyle },
+                    set: { userConfig.videoRespectASSStyle = $0 }
+                ))
                 HStack(spacing: 12) {
                     Text("Subtitle Font")
                         .font(.caption.weight(.medium))
@@ -736,10 +746,8 @@ struct VideoInspectorView: View {
                     title: "Off",
                     subtitle: nil,
                     isSelected: !tracks.contains(where: \.isSelected)
+                        && (type != .subtitle || (!isPrimarySubtitleActive && selectedRemoteSubtitleID == nil))
                 ) {
-                    if selectingSubtitleTrackClearsExternal {
-                        onClearPrimarySubtitle()
-                    }
                     onSelectTrack(type, nil)
                 }
             }
@@ -753,9 +761,6 @@ struct VideoInspectorView: View {
                         subtitle: track.codec,
                         isSelected: track.isSelected
                     ) {
-                        if selectingSubtitleTrackClearsExternal {
-                            onClearPrimarySubtitle()
-                        }
                         onSelectTrack(type, track.id)
                     }
                 }
@@ -1170,6 +1175,7 @@ extension VideoInspectorView: Equatable {
             && lhs.currentURL?.standardizedFileURL == rhs.currentURL?.standardizedFileURL
             && lhs.currentTitle == rhs.currentTitle
             && lhs.primarySubtitleName == rhs.primarySubtitleName
+            && lhs.isPrimarySubtitleActive == rhs.isPrimarySubtitleActive
             && lhs.remoteSubtitleOptions == rhs.remoteSubtitleOptions
             && lhs.selectedRemoteSubtitleID == rhs.selectedRemoteSubtitleID
             && lhs.selectedJimakuSubtitleID == rhs.selectedJimakuSubtitleID

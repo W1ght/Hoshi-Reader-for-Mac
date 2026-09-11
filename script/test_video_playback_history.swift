@@ -238,6 +238,20 @@ private enum VideoPlaybackHistoryTests {
             .off,
             "disabled subtitles should be remembered explicitly"
         )
+        expect(
+            store.externalSubtitlePath(for: .localFile(path: url.standardizedFileURL.path)),
+            subtitleURL.standardizedFileURL.path,
+            "disabling subtitles should keep the external file available"
+        )
+        store.save(
+            subtitleSelection: .externalDisabled(path: subtitleURL.path),
+            for: url
+        )
+        expect(
+            store.subtitleSelection(for: url),
+            .externalDisabled(path: subtitleURL.standardizedFileURL.path),
+            "a disabled external subtitle should retain its archived selection"
+        )
         let reloadedStore = VideoPlaybackHistoryStore(
             defaults: defaults,
             fileURL: historyFileURL
@@ -249,8 +263,13 @@ private enum VideoPlaybackHistoryTests {
         )
         expect(
             reloadedStore.subtitleSelection(for: url),
-            .off,
+            .externalDisabled(path: subtitleURL.standardizedFileURL.path),
             "subtitle selections should round-trip through the dedicated history file"
+        )
+        expect(
+            reloadedStore.externalSubtitlePath(for: .localFile(path: url.standardizedFileURL.path)),
+            subtitleURL.standardizedFileURL.path,
+            "external subtitle availability should round-trip through the dedicated history file"
         )
         expect(
             defaults.object(forKey: "videoPlaybackStates") == nil,
@@ -283,6 +302,15 @@ private enum VideoPlaybackHistoryTests {
             ),
             .external(existingSubtitleURL.standardizedFileURL),
             "existing external subtitle should restore before tracks load"
+        )
+        expect(
+            VideoSubtitleRestoreResolver.resolve(
+                selection: .externalDisabled(path: existingSubtitleURL.path),
+                tracks: [],
+                isLoaded: false
+            ),
+            .externalDisabled(existingSubtitleURL.standardizedFileURL),
+            "a disabled external subtitle should remain available without activating a track"
         )
         expect(
             VideoSubtitleRestoreResolver.resolve(

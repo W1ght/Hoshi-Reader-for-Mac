@@ -536,6 +536,19 @@ private enum VideoPlaybackModelTests {
             "track selection should reach the engine"
         )
 
+        engine.snapshot.tracks = [VideoTrack(
+            id: 7, type: .subtitle, title: "External", language: nil,
+            codec: "subrip", ffIndex: nil, externalFilename: subtitleURL.path,
+            isImage: false, isSelected: false
+        )]
+        engine.onSnapshotChanged?(engine.snapshot)
+        engine.externalSubtitleURL = nil
+        model.loadExternalSubtitle(subtitleURL)
+        expect(engine.externalSubtitleURL == nil,
+               "reenabling an imported subtitle must not add a duplicate track")
+        expect(engine.selectedTrack?.0 == .subtitle && engine.selectedTrack?.1 == 7,
+               "reenabling an imported subtitle should select its existing track")
+
         expect(VideoTimeFormatter.string(from: 65) == "1:05", "short times should use m:ss")
         expect(VideoTimeFormatter.string(from: 3661) == "1:01:01", "long times should use h:mm:ss")
 

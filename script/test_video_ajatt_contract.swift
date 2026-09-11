@@ -37,6 +37,10 @@ require(player, contains: "private func loadAJATTSubtitle", "AJATT downloads sho
 require(player, contains: "loadPrimarySubtitle(", "AJATT subtitles should reuse Niratan's primary subtitle parser")
 require(player, contains: "allowedDownloadHosts: source.allowedDownloadHosts", "AJATT downloads should retain their host policy through loading")
 require(player, contains: "maximumResponseSize: source.maximumResponseSize", "AJATT downloads should retain their byte limit through loading")
+require(player, contains: "CatalogSubtitleStore.archive", "AJATT downloads should be archived for reuse after the session")
+require(player, contains: ".external(path: archivedURL.standardizedFileURL.path)", "AJATT subtitle selections should be remembered as external files")
+require(player, contains: ".externalDisabled(path: catalogSubtitlePath)", "disabling an AJATT subtitle should preserve its archived file")
+require(player, contains: "if case .external(let path) = rememberedSelection", "remembered AJATT subtitles should be restored when a remote video reopens")
 require(client, contains: "https://subtitles.ajatt.top/", "AJATT should use the public HTTPS catalog")
 require(client, contains: "raw.githubusercontent.com", "AJATT should accept only the official GitHub mirror host")
 require(client, contains: "maximumCatalogResponseSize", "AJATT catalog responses should be bounded")
@@ -53,6 +57,7 @@ for path in [
     "Video/Remote/BoundedURLSessionData.swift",
     "Video/Subtitles/AJATTSubtitleCatalogClient.swift",
     "Video/Subtitles/AJATTSubtitleBrowserView.swift",
+    "Video/Subtitles/CatalogSubtitleStore.swift",
 ] {
     require(project, contains: path, "AJATT source should belong to the full Niratan target: \(path)")
 }

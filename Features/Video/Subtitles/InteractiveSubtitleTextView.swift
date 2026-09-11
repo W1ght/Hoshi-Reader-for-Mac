@@ -316,6 +316,7 @@ struct InteractiveSubtitleTextView: NSViewRepresentable {
     let lookupHighlightTextColor: Color
     let isLookupPopupVisible: Bool
     var onHoverChanged: (Bool) -> Void = { _ in }
+    var attributedText: NSAttributedString? = nil
     var onSelection: (String, Int, CGRect) -> Int?
 
     func makeNSView(context: Context) -> NSScrollView {
@@ -334,6 +335,9 @@ struct InteractiveSubtitleTextView: NSViewRepresentable {
         textView.font = subtitleFont()
         textView.string = text
         textView.applyEdgeRecipe(edgeRecipe)
+        if let attributedText, attributedText.string == text {
+            textView.textStorage?.setAttributedString(attributedText)
+        }
         textView.hoverLookupDelayMs = hoverLookupDelayMs
         textView.onCharacterClicked = { offset, rect in
             guard let candidate = SubtitleSelectionResolver.lookupCandidate(
@@ -369,6 +373,9 @@ struct InteractiveSubtitleTextView: NSViewRepresentable {
         textView.updateLookupHighlightTextColor(NSColor(lookupHighlightTextColor))
         textView.hoverLookupDelayMs = hoverLookupDelayMs
         textView.applyEdgeRecipe(edgeRecipe)
+        if let attributedText, attributedText.string == text {
+            textView.textStorage?.setAttributedString(attributedText)
+        }
         textView.onCharacterClicked = { offset, rect in
             guard let candidate = SubtitleSelectionResolver.lookupCandidate(
                 in: text,
@@ -386,6 +393,10 @@ struct InteractiveSubtitleTextView: NSViewRepresentable {
     }
 
     private func configureTextView(_ textView: NSTextView, isSelectable: Bool) {
+        // Subtitle colors are authored video colors, not document colors to
+        // invert when macOS switches between light and dark appearance.
+        textView.usesAdaptiveColorMappingForDarkAppearance = false
+        textView.textContainer?.replaceLayoutManager(SubtitleColorLayoutManager())
         textView.isEditable = false
         textView.isSelectable = isSelectable
         textView.drawsBackground = false

@@ -111,6 +111,11 @@ struct VideoPlayerScreen: View {
     }
 
     private var subtitleOverlayCues: [SubtitleCue] {
+        if subtitles.document?.assRenderPlan != nil {
+            return userConfig.videoRespectASSStyle
+                ? subtitles.currentCues
+                : ASSRenderPlan.uniqueTextCues(subtitles.currentCues)
+        }
         switch subtitleRenderingMode {
         case .overlayOnly:
             return subtitles.currentCues
@@ -161,6 +166,7 @@ struct VideoPlayerScreen: View {
                 miningHistory.updateLimit(userConfig.videoMiningHistoryLimit)
                 installEmbeddedSubtitleHandler()
                 synchronizeSelectedSubtitleTrack()
+                performCatalogSubtitleMaintenance()
                 if isActive {
                     registerKeyboardShortcuts()
                 }
@@ -312,6 +318,11 @@ struct VideoPlayerScreen: View {
 
     private var lifecycleModelContent: some View {
         lifecycleChromeContent
+            .onChange(of: userConfig.videoRespectASSStyle) { _, _ in
+                applyPreparedSubtitleRendering(logicalTrackID: model.snapshot.tracks.first {
+                    $0.type == .subtitle && $0.isSelected
+                }?.id)
+            }
             .onChange(of: model.snapshot.tracks) { _, _ in
                 restorePendingHistorySubtitleTrackIfAvailable()
                 restoreRememberedSubtitleSelectionOrAutoload()
@@ -809,7 +820,9 @@ struct VideoPlayerScreen: View {
                         lookupHighlightColor: userConfig.videoSubtitleLookupHighlightColor,
                         lookupHighlightTextColor: userConfig.videoSubtitleLookupHighlightTextColor,
                         isLookupPopupVisible: hasVisibleVideoPopup,
-                        isPlaybackPaused: !model.snapshot.isPlaying
+                        isPlaybackPaused: !model.snapshot.isPlaying,
+                        assRenderPlan: userConfig.videoRespectASSStyle ? subtitles.document?.assRenderPlan : nil,
+                        playbackTime: model.snapshot.currentTime - model.snapshot.subtitleDelay
                     ) { cue, selection in
                         lookup.present(
                             selection: selection,
@@ -1051,8 +1064,11 @@ struct VideoPlayerScreen: View {
             primarySubtitleName: selectedRemoteSubtitleID == nil
                 ? (selectedAJATTSubtitleName
                     ?? selectedJimakuSubtitleName
-                    ?? subtitles.document?.sourceURL.lastPathComponent)
+                    ?? externalSubtitleName)
                 : nil,
+            isPrimarySubtitleActive: areSubtitlesVisible
+                && subtitles.document != nil
+                && subtitles.document?.format != .embedded,
             remoteSubtitleOptions: currentRemoteSubtitleOptions,
             selectedRemoteSubtitleID: selectedRemoteSubtitleID,
             selectedJimakuSubtitleID: selectedJimakuSubtitleID,
@@ -1110,7 +1126,9 @@ struct VideoPlayerScreen: View {
                     if let id {
                         selectSubtitleTrack(id, rememberSelection: true)
                     } else {
-                        applySubtitlesOff(clearPrimary: true, rememberSelection: true)
+                        // Turning the subtitle track off should not discard a
+                        // downloaded catalog subtitle from External Subtitles.
+                        applySubtitlesOff(clearPrimary: false, rememberSelection: true)
                         showSubtitleTrackOSD(track: nil)
                     }
                     return
@@ -1128,6 +1146,10 @@ struct VideoPlayerScreen: View {
             onSelectAJATTSubtitle: { file in
                 dismissVideoPopupsIfNeeded()
                 loadAJATTSubtitle(file)
+            },
+            onSelectExternalSubtitle: {
+                dismissVideoPopupsIfNeeded()
+                restoreRememberedExternalSubtitle()
             },
             onSelectRemoteQuality: { option in
                 dismissVideoPopupsIfNeeded()
@@ -1158,6 +1180,17 @@ struct VideoPlayerScreen: View {
     private var currentRemoteSubtitleOptions: [RemoteVideoSubtitleOption] {
         guard case .remoteStream(let source) = model.currentSource else { return [] }
         return source.subtitleOptions
+    }
+
+    private var externalSubtitleName: String? {
+        if let document = subtitles.document, document.format != .embedded {
+            return document.sourceURL.lastPathComponent
+        }
+        guard let url = model.rememberedExternalSubtitleURL,
+              FileManager.default.fileExists(atPath: url.path) else {
+            return nil
+        }
+        return url.lastPathComponent
     }
 
     private var currentRemoteQualityOptions: [RemoteVideoQualityOption] {
@@ -1381,6 +1414,21 @@ struct VideoPlayerScreen: View {
                 applySubtitlesOff(clearPrimary: true, rememberSelection: false)
                 return
             }
+            if case .externalDisabled = rememberedSelection {
+                applySubtitlesOff(clearPrimary: true, rememberSelection: false)
+                return
+            }
+            if case .external(let path) = rememberedSelection {
+                let externalURL = URL(fileURLWithPath: path).standardizedFileURL
+                if FileManager.default.fileExists(atPath: externalURL.path) {
+                    loadPrimarySubtitle(
+                        from: externalURL,
+                        loadIntoMpv: !CatalogSubtitleStore.isManagedURL(externalURL),
+                        rememberSelection: false
+                    )
+                    return
+                }
+            }
             let subtitle = rememberedSelection
                 .flatMap { remoteSubtitle(selection: $0, in: remoteSource) }
                 ?? preferredRemoteSubtitle(in: remoteSource)
@@ -1456,34 +1504,6 @@ struct VideoPlayerScreen: View {
         )
     }
 
-    private enum CatalogSubtitleSource {
-        case jimaku
-        case ajatt
-
-        var allowedDownloadHosts: Set<String>? {
-            switch self {
-            case .jimaku: nil
-            case .ajatt: ["raw.githubusercontent.com"]
-            }
-        }
-
-        var errorMessage: String {
-            switch self {
-            case .jimaku:
-                String(localized: "Unable to load the Jimaku subtitle.")
-            case .ajatt:
-                String(localized: "Unable to load the AJATT subtitle.")
-            }
-        }
-
-        var maximumResponseSize: Int {
-            switch self {
-            case .jimaku: 64 * 1_024 * 1_024
-            case .ajatt: 10 * 1_024 * 1_024
-            }
-        }
-    }
-
     private func loadCatalogSubtitle(
         option: RemoteVideoSubtitleOption,
         id: String,
@@ -1503,6 +1523,7 @@ struct VideoPlayerScreen: View {
         selectedAJATTSubtitleName = nil
         remoteSubtitleGeneration &+= 1
         let generation = remoteSubtitleGeneration
+        guard let videoKey = model.currentMediaIdentity?.persistenceKey else { return }
         Task { @MainActor in
             do {
                 guard let tempURL = try await remoteSubtitleLoader.load(
@@ -1510,15 +1531,25 @@ struct VideoPlayerScreen: View {
                     allowedDownloadHosts: source.allowedDownloadHosts,
                     maximumResponseSize: source.maximumResponseSize,
                     generation: generation
-                ), generation == remoteSubtitleGeneration else { return }
+                ), generation == remoteSubtitleGeneration,
+                   model.currentMediaIdentity?.persistenceKey == videoKey else { return }
+                // Keep a durable copy so the selection survives cleanup of the
+                // remote loader's temporary directory and later sessions.
+                let archivedURL = try CatalogSubtitleStore.archive(
+                    fileAt: tempURL,
+                    videoKey: videoKey,
+                    fileName: name
+                )
+                model.rememberExternalSubtitlePath(archivedURL)
                 await loadPrimarySubtitle(
-                    from: tempURL,
+                    from: archivedURL,
                     loadIntoMpv: false,
                     rememberSelection: false
                 ).value
                 guard generation == remoteSubtitleGeneration,
+                      model.currentMediaIdentity?.persistenceKey == videoKey,
                       subtitles.document?.sourceURL.standardizedFileURL
-                        == tempURL.standardizedFileURL else { return }
+                        == archivedURL.standardizedFileURL else { return }
                 switch source {
                 case .jimaku:
                     selectedJimakuSubtitleID = id
@@ -1527,6 +1558,9 @@ struct VideoPlayerScreen: View {
                     selectedAJATTSubtitleID = id
                     selectedAJATTSubtitleName = name
                 }
+                model.rememberSubtitleSelection(
+                    .external(path: archivedURL.standardizedFileURL.path)
+                )
             } catch {
                 guard !Task.isCancelled,
                       generation == remoteSubtitleGeneration else { return }
@@ -1541,6 +1575,30 @@ struct VideoPlayerScreen: View {
         source.preferredSubtitle(
             preferredLanguages: [source.selectedSubtitleLanguage].compactMap { $0 },
             fallbackLanguages: ["ja", "en"]
+        )
+    }
+
+    private func performCatalogSubtitleMaintenance() {
+        let referencedFilePaths = model.rememberedExternalSubtitlePaths()
+        Task.detached(priority: .utility) {
+            CatalogSubtitleStore.performMaintenanceIfNeeded(
+                referencedFilePaths: referencedFilePaths
+            )
+        }
+    }
+
+    private func restoreRememberedExternalSubtitle() {
+        let currentExternalURL = subtitles.document.flatMap {
+            $0.format == .embedded ? nil : $0.sourceURL
+        }
+        guard let subtitleURL = currentExternalURL ?? model.rememberedExternalSubtitleURL,
+              FileManager.default.fileExists(atPath: subtitleURL.path) else {
+            return
+        }
+        loadPrimarySubtitle(
+            from: subtitleURL,
+            loadIntoMpv: !CatalogSubtitleStore.isManagedURL(subtitleURL),
+            rememberSelection: true
         )
     }
 
@@ -1730,6 +1788,9 @@ struct VideoPlayerScreen: View {
         }
         configureSubtitleRendering(initialMode)
         subtitles.clearPrimary()
+        if CatalogSubtitleStore.isManagedURL(url), !loadIntoMpv {
+            model.selectTrack(type: .subtitle, id: nil)
+        }
         if loadIntoMpv {
             model.loadExternalSubtitle(url)
         }
@@ -1741,8 +1802,13 @@ struct VideoPlayerScreen: View {
             if subtitles.document?.sourceURL.standardizedFileURL
                 == url.standardizedFileURL {
                 areSubtitlesVisible = true
+                if CatalogSubtitleStore.isManagedURL(url), !loadIntoMpv {
+                    // Keep the parsed, interactive document authoritative before
+                    // registering the selectable track and ASS effects renderer.
+                    model.loadExternalSubtitle(url)
+                }
                 let logicalTrackID: Int?
-                if loadIntoMpv {
+                if loadIntoMpv || CatalogSubtitleStore.isManagedURL(url) {
                     logicalTrackID = nil
                 } else {
                     logicalTrackID = model.snapshot.tracks.first {
@@ -1750,6 +1816,9 @@ struct VideoPlayerScreen: View {
                     }?.id ?? selectedTrack?.id
                 }
                 applyPreparedSubtitleRendering(logicalTrackID: logicalTrackID)
+                if CatalogSubtitleStore.isManagedURL(url) {
+                    model.rememberExternalSubtitlePath(url)
+                }
                 if rememberSelection {
                     model.rememberSubtitleSelection(
                         .external(path: url.standardizedFileURL.path)
@@ -2869,9 +2938,12 @@ struct VideoPlayerScreen: View {
             _ = model.consumePendingSubtitleSelection()
             loadPrimarySubtitle(
                 from: subtitleURL,
-                loadIntoMpv: true,
+                loadIntoMpv: !CatalogSubtitleStore.isManagedURL(subtitleURL),
                 rememberSelection: false
             )
+        case .externalDisabled:
+            _ = model.consumePendingSubtitleSelection()
+            applySubtitlesOff(clearPrimary: true, rememberSelection: false)
         case .embeddedTrack(let trackID):
             _ = model.consumePendingSubtitleSelection()
             selectSubtitleTrack(trackID, rememberSelection: false, showOSD: false)
@@ -2910,6 +2982,15 @@ struct VideoPlayerScreen: View {
             return
         }
         lastSelectedSubtitleTrackID = trackID
+        if let filename = track.externalFilename, !filename.isEmpty {
+            loadPrimarySubtitle(
+                from: URL(fileURLWithPath: filename),
+                loadIntoMpv: true,
+                rememberSelection: rememberSelection
+            )
+            if showOSD { showSubtitleTrackOSD(track: track) }
+            return
+        }
         if track.isSelected && areSubtitlesVisible && subtitles.document?.format == .embedded {
             synchronizeSelectedSubtitleTrack()
         } else {
@@ -2944,6 +3025,20 @@ struct VideoPlayerScreen: View {
         clearPrimary: Bool,
         rememberSelection: Bool
     ) {
+        remoteSubtitleGeneration &+= 1
+        if let selectedID = model.snapshot.tracks.first(where: {
+            $0.type == .subtitle && $0.isSelected
+        })?.id {
+            lastSelectedSubtitleTrackID = selectedID
+        }
+        let catalogSubtitlePath = subtitles.document
+            .flatMap { document -> String? in
+                guard document.format != .embedded,
+                      CatalogSubtitleStore.isManagedURL(document.sourceURL) else {
+                    return nil
+                }
+                return document.sourceURL.standardizedFileURL.path
+            }
         cancelSubtitleTrackExtraction()
         invalidatePrimarySubtitleLoad()
         subtitles.cancelPendingPrimaryLoad()
@@ -2955,13 +3050,18 @@ struct VideoPlayerScreen: View {
             selectedJimakuSubtitleName = nil
             selectedAJATTSubtitleID = nil
             selectedAJATTSubtitleName = nil
-            lastSelectedSubtitleTrackID = nil
         }
         subtitles.discardTemporaryASSEffects()
         model.selectTrack(type: .subtitle, id: nil)
         areSubtitlesVisible = false
         if rememberSelection {
-            model.rememberSubtitleSelection(.off)
+            if let catalogSubtitlePath {
+                model.rememberSubtitleSelection(
+                    .externalDisabled(path: catalogSubtitlePath)
+                )
+            } else {
+                model.rememberSubtitleSelection(.off)
+            }
         }
     }
 
@@ -2973,6 +3073,12 @@ struct VideoPlayerScreen: View {
             applySubtitlesOff(clearPrimary: false, rememberSelection: true)
             showSubtitleVisibilityOSD(isVisible: areSubtitlesVisible)
         } else {
+            if subtitles.document == nil,
+               model.rememberedExternalSubtitleURL != nil,
+               lastSelectedSubtitleTrackID == nil {
+                restoreRememberedExternalSubtitle()
+                return
+            }
             if let document = subtitles.document,
                document.format != .embedded {
                 areSubtitlesVisible = true
@@ -3149,9 +3255,14 @@ struct VideoPlayerScreen: View {
             $0.type == .subtitle && $0.isSelected
         }) else {
             cancelSubtitleTrackExtraction()
-            configureSubtitleRendering(
-                subtitles.document?.assRenderPlan == nil ? .overlayOnly : .nativeOnly
-            )
+            if areSubtitlesVisible, let document = subtitles.document,
+               document.format != .embedded {
+                // Catalog imports own their interactive document independently
+                // of mpv's selected track, as in 1.6.4.
+                applyPreparedSubtitleRendering(logicalTrackID: nil)
+            } else {
+                configureSubtitleRendering(.overlayOnly)
+            }
             if subtitles.document?.format == .embedded,
                model.subtitlePreservingLoadGeneration != model.loadGeneration {
                 subtitles.clearPrimary()
@@ -3277,6 +3388,10 @@ struct VideoPlayerScreen: View {
     }
 
     private func applyPreparedSubtitleRendering(logicalTrackID: Int?) {
+        guard areSubtitlesVisible else {
+            configureSubtitleRendering(.overlayOnly)
+            return
+        }
         guard let document = subtitles.document else {
             configureSubtitleRendering(.overlayOnly)
             return
@@ -3292,29 +3407,23 @@ struct VideoPlayerScreen: View {
             configureSubtitleRendering(mode)
             return
         }
-        guard renderPlan.hasPrimaryDialogue else {
-            configureSubtitleRendering(.nativeOnly)
+        // As in Fushi, every parsed ASS text event is drawn by the same layer
+        // that owns glyph hit testing, including positioned/lyric/KFX text.
+        // Never replace it with an unselectable libass primary track.
+        if userConfig.videoRespectASSStyle,
+           renderPlan.interactiveEffectsOnlyData != nil,
+           subtitles.prepareTemporaryASSEffectsIfNeeded(),
+           let effectsURL = subtitles.assEffectsURL {
+            if !model.configureSubtitleRendering(.splitASS(effectsURL: effectsURL, logicalTrackID: logicalTrackID)) {
+                // Non-text effects are best effort; a renderer failure must
+                // never take away the visible, selectable text.
+                configureSubtitleRendering(.overlayOnly)
+            } else {
+                subtitleRenderingMode = .splitASS(effectsURL: effectsURL, logicalTrackID: logicalTrackID)
+            }
             return
         }
-        guard renderPlan.effectsOnlyData != nil else {
-            configureSubtitleRendering(.overlayOnly)
-            return
-        }
-        guard subtitles.prepareTemporaryASSEffectsIfNeeded(),
-              !subtitles.assEffectsPreparationFailed,
-              let effectsURL = subtitles.assEffectsURL else {
-            subtitles.errorMessage = String(
-                localized: "Unable to prepare interactive ASS subtitles. The original subtitle will be shown instead."
-            )
-            configureSubtitleRendering(.nativeOnly)
-            return
-        }
-        configureSubtitleRendering(
-            .splitASS(
-                effectsURL: effectsURL,
-                logicalTrackID: logicalTrackID
-            )
-        )
+        configureSubtitleRendering(.overlayOnly)
     }
 
     @discardableResult

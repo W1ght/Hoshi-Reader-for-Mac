@@ -23,13 +23,40 @@ struct SubtitleOverlayView: View {
     let lookupHighlightTextColor: Color
     let isLookupPopupVisible: Bool
     let isPlaybackPaused: Bool
+    var assRenderPlan: ASSRenderPlan? = nil
+    var playbackTime: Double = 0
     var onSelection: ((SubtitleCue, SelectionData) -> Int?)?
 
     var body: some View {
+        if let assRenderPlan {
+            GeometryReader { geometry in
+                ForEach(ASSInteractiveTextStyle.layout(
+                    cues: cues, plan: assRenderPlan, size: geometry.size, time: playbackTime
+                ), id: \.cue.id) { item in
+                        let style = item.style
+                        let measured = ASSInteractiveTextStyle.measuredSize(style.text, width: style.width)
+                        subtitleRow(item.cue, styledText: style.text)
+                            .frame(width: style.width, height: measured.height)
+                            .position(x: style.anchor.x + (0.5 - style.alignment.x) * style.width,
+                                      y: style.anchor.y + (0.5 - style.alignment.y) * measured.height)
+                            .opacity(style.opacity)
+                            .zIndex(Double(style.layer))
+                }
+            }
+        } else {
         SubtitleVerticalPositionLayout(position: verticalPosition) {
             VStack(spacing: 8) {
                 ForEach(cues) { cue in
-                    SubtitleCueMaskRow(
+                    subtitleRow(cue)
+                }
+            }
+            .padding(.horizontal, 24)
+        }
+        }
+    }
+
+    private func subtitleRow(_ cue: SubtitleCue, styledText: NSAttributedString? = nil) -> some View {
+        SubtitleCueMaskRow(
                         cue: cue,
                         contextCues: contextCues,
                         scanLength: scanLength,
@@ -51,12 +78,9 @@ struct SubtitleOverlayView: View {
                         lookupHighlightTextColor: lookupHighlightTextColor,
                         isLookupPopupVisible: isLookupPopupVisible,
                         isPlaybackPaused: isPlaybackPaused,
+                        styledText: styledText,
                         onSelection: onSelection
                     )
-                }
-            }
-            .padding(.horizontal, 24)
-        }
     }
 }
 
@@ -82,6 +106,7 @@ private struct SubtitleCueMaskRow: View {
     let lookupHighlightTextColor: Color
     let isLookupPopupVisible: Bool
     let isPlaybackPaused: Bool
+    var styledText: NSAttributedString? = nil
     var onSelection: ((SubtitleCue, SelectionData) -> Int?)?
 
     @State private var isHovering = false
@@ -104,7 +129,8 @@ private struct SubtitleCueMaskRow: View {
                 isLookupPopupVisible: isLookupPopupVisible,
                 onHoverChanged: { hovering in
                     isHovering = hovering
-                }
+                },
+                attributedText: styledText
             ) { lookupText, offset, localRect in
                 let frame = geometry.frame(in: .named("video-player"))
                 let selectionRect = CGRect(
@@ -136,7 +162,7 @@ private struct SubtitleCueMaskRow: View {
             availableTextWidth = width
         }
         .background {
-            if !backgroundDisabled && normalizedBackgroundOpacity > 0 {
+            if styledText == nil && !backgroundDisabled && normalizedBackgroundOpacity > 0 {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color.black.opacity(normalizedBackgroundOpacity))
             }
@@ -146,8 +172,8 @@ private struct SubtitleCueMaskRow: View {
         .animation(.smooth(duration: 0.12), value: isHovering)
         .animation(.smooth(duration: 0.12), value: isLookupPopupVisible)
         .frame(height: rowHeight)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 6)
+        .padding(.horizontal, styledText == nil ? 14 : 0)
+        .padding(.vertical, styledText == nil ? 6 : 0)
         .contentShape(Rectangle())
         .onHover { hovering in
             isHovering = hovering
@@ -181,7 +207,12 @@ private struct SubtitleCueMaskRow: View {
     }
 
     private var rowHeight: CGFloat {
-        SubtitleOverlayRowHeightMeasurer.height(
+        if let styledText {
+            return ASSInteractiveTextStyle.measuredSize(
+                styledText, width: availableTextWidth > 0 ? availableTextWidth : 640
+            ).height
+        }
+        return SubtitleOverlayRowHeightMeasurer.height(
             for: cue.text,
             availableWidth: availableTextWidth > 0 ? availableTextWidth : 640,
             fontFamily: fontFamily,

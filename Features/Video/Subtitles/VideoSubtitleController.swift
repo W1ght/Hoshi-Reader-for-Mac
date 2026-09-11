@@ -405,7 +405,7 @@ final class VideoSubtitleController {
     func prepareTemporaryASSEffectsIfNeeded() -> Bool {
         guard !assEffectsPreparationFailed else { return false }
         if assEffectsURL != nil { return true }
-        guard let data = document?.assRenderPlan?.effectsOnlyData else { return true }
+        guard let data = document?.assRenderPlan?.interactiveEffectsOnlyData else { return true }
         let result = Self.prepareTemporaryEffectsFile(from: data)
         replaceTemporaryEffectsFile(with: result.url)
         assEffectsPreparationFailed = result.failed
@@ -419,7 +419,7 @@ final class VideoSubtitleController {
     ) throws -> PreparedSubtitleLoad {
         try throwIfCancelled(isCancelled)
         let effectsResult = try prepareTemporaryEffectsFile(
-            from: document.assRenderPlan?.effectsOnlyData,
+            from: document.assRenderPlan?.interactiveEffectsOnlyData,
             isCancelled: isCancelled
         )
         if isCancelled() {

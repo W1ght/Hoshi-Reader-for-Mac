@@ -67,6 +67,18 @@ nonisolated struct ASSRenderPlan: Hashable, Sendable {
     /// A complete ASS/SSA document with primary-dialogue event lines removed.
     /// `nil` means there is no remaining libass-owned event to install.
     let effectsOnlyData: Data?
+    var styleDefinitions: [String: [String: String]] = [:]
+    var scriptWidth: Double = 384
+    var scriptHeight: Double = 288
+    /// Only non-text drawing events; every textual event belongs to TextKit.
+    var interactiveEffectsOnlyData: Data? = nil
+
+    /// Fushi's default subtitle mode: identical active text layers share one
+    /// visible, selectable row. Keep the original cue for lookup/mining timing.
+    static func uniqueTextCues(_ cues: [SubtitleCue]) -> [SubtitleCue] {
+        var seen = Set<String>()
+        return cues.filter { !$0.text.isEmpty && seen.insert($0.text).inserted }
+    }
 
     var hasPrimaryDialogue: Bool {
         !primaryCueIDs.isEmpty

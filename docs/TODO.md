@@ -108,6 +108,7 @@ xcrun swiftc -parse-as-library Models/Subtitle.swift Features/Video/Remote/YouTu
 xcrun swiftc -parse-as-library Models/Subtitle.swift Features/Video/Remote/YouTubeURLParser.swift Features/Video/Remote/RemoteVideoSource.swift Features/Video/Remote/BoundedURLSessionData.swift Features/Video/Remote/RemoteSubtitleLoader.swift script/test_video_remote_subtitle_loader.swift -o /tmp/test_video_remote_subtitle_loader && /tmp/test_video_remote_subtitle_loader
 swift script/test_video_jimaku_contract.swift
 xcrun swiftc -parse-as-library Models/Subtitle.swift Features/Video/Remote/YouTubeURLParser.swift Features/Video/Remote/RemoteVideoSource.swift Features/Video/Subtitles/JimakuAPIClient.swift script/test_video_jimaku_client.swift -o /tmp/test_video_jimaku_client && /tmp/test_video_jimaku_client
+xcrun swiftc -parse-as-library Features/Video/Subtitles/CatalogSubtitleStore.swift script/test_video_catalog_subtitle_store.swift -o /tmp/test_video_catalog_subtitle_store && /tmp/test_video_catalog_subtitle_store
 xcrun swiftc -parse-as-library Models/Subtitle.swift Features/Video/Remote/YouTubeURLParser.swift Features/Video/Remote/RemoteVideoSource.swift Features/Video/VideoMediaTypes.swift Features/Video/VideoLibraryStore.swift script/test_video_library_store.swift -o /tmp/test_video_library_store && /tmp/test_video_library_store
 xcrun swiftc -parse-as-library Models/Subtitle.swift Features/Video/Playback/PlaybackEngine.swift Features/Video/Remote/YouTubeURLParser.swift Features/Video/Remote/RemoteVideoSource.swift Features/Video/VideoPlaybackHistoryStore.swift script/test_video_playback_history.swift -o /tmp/test_video_playback_history && /tmp/test_video_playback_history
 swift script/test_video_thumbnail_store.swift
@@ -151,5 +152,6 @@ gh run list --repo W1ght/Niratan --workflow release-mac.yml --limit 5
 - [x] Reuse AnkiConnect media upload for on-demand video screenshots and subtitle-range audio clips.
 - [x] Keep Video media placeholders in normal Anki field mapping and capture current-frame screenshots plus bundled-libmpv subtitle-range audio before AnkiConnect submission.
 - [ ] Re-plan secondary/bilingual subtitles after primary subtitle import, transcript navigation, lookup and mining are fully validated.
-- [x] Split external and embedded ASS/SSA ownership: render ordinary bottom dialogue once in Niratan's visible interactive layer while preserving authored positioning, karaoke, drawings and layered effects through bundled libass.
-- [ ] Keep embedded secondary subtitle extraction, arbitrary positioned-ASS glyph hit geometry, study statistics and sync as later work.
+- [x] Keep ASS/SSA text selectable in both uniform appearance and Respect ASS Styles modes; deduplicate uniform-mode KFX text and reserve libass for separate non-text drawings.
+- [ ] Complete authored ASS clipping, rotation, transforms, animated karaoke and mixed drawing/text parity with Fushi; validate actual mouse lookup in both modes with disposable media.
+- [ ] Keep embedded secondary subtitle extraction, study statistics and sync as later work.

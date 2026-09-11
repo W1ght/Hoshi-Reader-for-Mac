@@ -1,6 +1,12 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Respect ASS subtitle styles": {
+      "localizations": {
+        "en": { "stringUnit": { "state": "translated", "value": "Respect ASS subtitle styles" } },
+        "zh-Hans": { "stringUnit": { "state": "translated", "value": "尊重 ASS 字幕自带样式" } }
+      }
+    },
     "Save Clean Screenshot": {
       "localizations": {
         "en": {

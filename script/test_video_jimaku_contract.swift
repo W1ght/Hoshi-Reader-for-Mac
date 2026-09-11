@@ -43,11 +43,16 @@ require(inspector, contains: "JimakuSubtitleBrowserView(", "the Video subtitle i
 require(inspector, contains: "Get Subtitles (Jimaku)", "the subtitle inspector should expose the Jimaku sheet as an explicit action")
 require(player, contains: "private func loadJimakuSubtitle", "Jimaku downloads should enter the player subtitle path")
 require(player, contains: "loadPrimarySubtitle(", "Jimaku subtitles should reuse Niratan's primary subtitle parser")
+require(player, contains: "CatalogSubtitleStore.archive", "Jimaku downloads should be archived for reuse after the session")
+require(player, contains: ".external(path: archivedURL.standardizedFileURL.path)", "Jimaku subtitle selections should be remembered as external files")
+require(player, contains: ".externalDisabled(path: catalogSubtitlePath)", "disabling a Jimaku subtitle should preserve its archived file")
+require(player, contains: "if case .external(let path) = rememberedSelection", "remembered Jimaku subtitles should be restored when a remote video reopens")
 require(loader, contains: "case .ass:", "remote subtitle loading should preserve ASS files")
 for path in [
     "Video/Subtitles/JimakuAPIClient.swift",
     "Video/Subtitles/JimakuCredentialStore.swift",
     "Video/Subtitles/JimakuSubtitleBrowserView.swift",
+    "Video/Subtitles/CatalogSubtitleStore.swift",
 ] {
     require(project, contains: path, "Jimaku source should belong to the full Niratan target: \(path)")
 }

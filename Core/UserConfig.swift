@@ -453,6 +453,10 @@ class UserConfig {
         }
     }
 
+    var videoRespectASSStyle: Bool {
+        willSet { Self.defaults.set(newValue, forKey: "videoRespectASSStyle") }
+    }
+
     var videoSubtitleFontSize: Double {
         willSet {
             let clampedVideoSubtitleFontSize = min(max(newValue, 12), 72)
@@ -988,6 +992,7 @@ class UserConfig {
         )
         self.videoSubtitleFontFamily =
             defaults.string(forKey: "videoSubtitleFontFamily") ?? ""
+        self.videoRespectASSStyle = defaults.bool(forKey: "videoRespectASSStyle")
         self.videoSubtitleFontSize = min(
             max(defaults.object(forKey: "videoSubtitleFontSize") as? Double ?? 36, 12),
             72
@@ -1112,6 +1117,7 @@ class UserConfig {
     }
 
     func resetVideoSubtitleAppearance() {
+        videoRespectASSStyle = false
         videoSubtitleFontFamily = ""
         videoSubtitleFontSize = 36
         videoSubtitleFontWeight = 700

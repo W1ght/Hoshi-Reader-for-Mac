@@ -2,6 +2,18 @@
 
 This changelog records user-visible changes only. Implementation details, investigation logs, and temporary experiments belong in commits, issues, or focused design docs.
 
+## 1.6.6
+
+### 中文
+
+- Video 的 ASS/SSA 字幕现在支持在统一外观与“尊重 ASS 字幕自带样式”之间切换；两种模式都保留文字选择、查词和制卡，并支持常见的字体、颜色、位置、移动和淡入淡出效果。
+- AJATT 与 Jimaku 下载的外挂字幕现在会按视频归档并记住；下次打开同一视频时可以恢复，关闭字幕后也能直接重新启用，不会重复加载字幕轨道。
+
+### English
+
+- Video ASS/SSA subtitles can now switch between the uniform appearance and a Respect ASS Subtitle Styles mode. Both modes keep text selection, lookup, and card mining available while supporting common authored font, color, positioning, movement, and fade effects.
+- External subtitles downloaded from AJATT and Jimaku are now archived per video and remembered. They can be restored when the same video is reopened and re-enabled after being hidden without loading duplicate tracks.
+
 ## 1.6.5
 
 ### 中文

@@ -33,4 +33,11 @@ require(
     "playback tick saves should be deferred while media-switch saves remain synchronous"
 )
 
+require(
+    store.contains("externalSubtitlePaths")
+        && store.contains("externalDisabled")
+        && viewModel.contains("rememberedExternalSubtitleURL"),
+    "subtitle visibility should be persisted separately from the last external subtitle file"
+)
+
 print("Video playback history persistence contract tests passed")
